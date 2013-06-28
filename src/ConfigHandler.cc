@@ -27,7 +27,8 @@ int PrintProgramUsage(const char* dummy = "")
 
 ConfigHandler::ConfigHandler() : 
   ParameterList("ConfigHandler","Global container for all parameters"), 
-  _program_usage(""), _notes(), _default_cfg_file(), _saved_cfg()
+  _program_usage(""), _program_description,
+  _notes(), _default_cfg_file(), _saved_cfg()
 {
   AddCommandSwitch(' ',"cfg","Load global configuration data from <file>",
 		   CommandSwitch::LoadConfigFile(this),
@@ -72,7 +73,11 @@ void ConfigHandler::PrintSwitches(bool quit)
 {
   if(quit)
     MessageHandler::GetInstance()->End();
-  std::cout<<"Usage: "<<_program_usage<<std::endl;
+  if(_program_usage != "")
+    std::cout<<"Usage: "<<_program_usage<<std::endl;
+  if(_program_description != "") 
+    std::cout<<"Description: "<<_program_desription<<std::endl;
+  
   size_t maxlong = 0;
   size_t maxpar = 0;
   //struct winsize w;
