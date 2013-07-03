@@ -25,6 +25,17 @@ int PrintProgramUsage(const char* dummy = "")
   return 0;
 }
 
+int PrintAnnotatedConfig(const char* dummy = "")
+{
+  MessageHandler::GetInstance()->End();
+  ConfigHandler::GetInstance()->PrintSwitches(false,std::cout, true);
+  std::cout<<"\n#Full sample configuration file:\n"<<std::endl;
+  ConfigHandler::GetInstance()->WriteTo(std::cout,true,0);
+  std::cout<<"\n\n#End sample config file"<<std::endl;
+  exit(0);
+  return 0;
+}
+
 int NoOp(const char* dummy="") { return 0; }
 
 ConfigHandler::ConfigHandler() : 
@@ -42,13 +53,17 @@ ConfigHandler::ConfigHandler() :
 		   CommandSwitch::DefaultRead<std::string>(_saved_cfg),
 		   "file");
   AddCommandSwitch(' ',"show-parameters",
-		   "Print information about available configuration parameters",
+		   "Interactively browse available configuration parameters",
 		   ParamHelpPrinter(this) );
   AddCommandSwitch('h',"help","Display this help page",
 		   PrintProgramUsage) ;
+  AddCommandSwitch(' ',"print-options",
+		   "Print all config options with annotated description",
+		   PrintAnnotatedConfig );
+  
   RegisterParameter("notes",_notes, "Generic notes about this run, etc");
-  RegisterParameter("saved-config",_saved_cfg,
-		    "Previously saved configuration file");
+  //RegisterParameter("saved-config",_saved_cfg,
+  //"Previously saved configuration file");
 }
 
 ConfigHandler::~ConfigHandler()
@@ -73,14 +88,19 @@ int ConfigHandler::RemoveCommandSwitch(char shortname,
   return 1;
 }
 
-void ConfigHandler::PrintSwitches(bool quit)
+void ConfigHandler::PrintSwitches(bool quit, std::ostream& out, bool escape)
 {
+  std::string endline = "\n";
+  if(escape) endline+="#";
+  
+  out<<endline;
+
   if(quit)
     MessageHandler::GetInstance()->End();
   if(_program_usage != "")
-    std::cout<<"Usage: "<<_program_usage<<std::endl;
+    out<<"Usage: "<<_program_usage<<endline;
   if(_program_description != "") 
-    std::cout<<"Description: "<<_program_description<<std::endl;
+    out<<"Description: "<<_program_description<<endline;
   
   size_t maxlong = 0;
   size_t maxpar = 0;
@@ -97,32 +117,32 @@ void ConfigHandler::PrintSwitches(bool quit)
     maxpar = (maxpar > (*it)->parameter.size() ? 
 		   maxpar : (*it)->parameter.size() );
   }
-  std::cout<<"Available Options:"<<std::endl;
+  out<<"Available Command Line Options:"<<endline;
   for(SwitchSet::iterator it = _switches.begin(); it != _switches.end(); it++){
     VCommandSwitch* cmd = *it;
-    std::cout<<" ";
+    out<<" ";
     if( cmd->shortname != ' ')
-      std::cout<<'-'<<cmd->shortname;
+      out<<'-'<<cmd->shortname;
     else
-      std::cout<<"  ";
+      out<<"  ";
     
     if( cmd->shortname != ' ' && cmd->longname != "")
-      std::cout<<',';
+      out<<',';
     else 
-      std::cout<<' ';
+      out<<' ';
     if( cmd->longname != "" ) 
-      std::cout<<"--"<<cmd->longname;
+      out<<"--"<<cmd->longname;
     else
-      std::cout<<"  ";
+      out<<"  ";
     for(size_t i=0; i < maxlong - cmd->longname.size(); i++)
-      std::cout<<' ';
+      out<<' ';
     if( cmd->parameter != "" )
-      std::cout<<" <"<<cmd->parameter<<'>';
+      out<<" <"<<cmd->parameter<<'>';
     else 
-      std::cout<<"   ";
+      out<<"   ";
     for(size_t i=0; i < maxpar - cmd->parameter.size(); i++)
-      std::cout<<' ';
-    std::cout<<"  ";
+      out<<' ';
+    out<<"  ";
     //insert line-breaks into helptext
     int offset=1+2+1+2+maxlong+3+maxpar+2+2; //final 2 for indent
     std::string spaces;
@@ -135,11 +155,12 @@ void ConfigHandler::PrintSwitches(bool quit)
       size_t spacepos = chunk.rfind(' ');
       if(spacepos == std::string::npos)
 	break;
-      std::cout<<chunk.substr(0,spacepos)<<"\n"<<spaces;
+      out<<chunk.substr(0,spacepos)<<(escape ? "\n#":"\n")<<spaces;
       mypos += spacepos+1;
     }
-    std::cout<<cmd->helptext.substr(mypos)<<std::endl;
+    out<<cmd->helptext.substr(mypos)<<endline;
   }
+  out<<std::endl;
   if(quit)
     exit(0);
 }
@@ -174,7 +195,7 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
 	};
       }
       else{
-	Message(INFO)<<"No --cfg switch found and no default file specified; "
+	Message(DEBUG)<<"No --cfg switch found and no default file specified; "
 		     <<"using compiled defaults.\n";
       }
     }

@@ -68,7 +68,8 @@ public:
   int RemoveCommandSwitch(char shortname, const std::string& longname);
   
   ///Prints info for the registered switches
-  void PrintSwitches(bool quit=true);
+  void PrintSwitches(bool quit=true, std::ostream& out = std::cout,
+		     bool escape=false);
   ///Set the usage string given by the '-h' or '--help' options
   void SetProgramUsageString(const std::string& usage){ _program_usage=usage;}
   /// Get the program usage string

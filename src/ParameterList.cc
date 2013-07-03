@@ -191,13 +191,15 @@ std::ostream& ParameterList::WriteTo( std::ostream& out, bool showhelp,
   //Loop over all the parameters in the map and pass the stream to them
   while( !out.fail() && mapit != _parameters.end() ){
     int node_type = mapit->second->GetNodeType();
-    if(showhelp) out<<"#"<<mapit->second->GetHelpText()<<newline;
+    if(showhelp) out<<newline<<"# "<<mapit->second->GetHelpText()<<newline;
     if(node_type != FUNCTION)
 	out<<(mapit->first)<<" ";
     mapit->second->WriteTo(out, showhelp, indent+1);
     out<<newline;
+    ++mapit;
   }
-  out<<" )";
+  out<<(showhelp ? newline : "")<<")" << (showhelp ? " #end list" : "");
+  out.flush();
   return out;
 }
 

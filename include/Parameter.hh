@@ -174,4 +174,24 @@ template<> inline std::istream& Parameter<unsigned long long>::ReadFrom(std::ist
   _val = ReadUnsignedInt(in); return in;
 }
 
+///Override std::string's to let "" be an empty string
+template<> inline std::istream& Parameter<std::string>::ReadFrom(std::istream& in, bool)
+{
+  std::string temp;
+  if(in>>temp){
+    if(temp == "\"\"")
+      _val = "";
+    else 
+      _val = temp;
+  }
+  return in;
+}
+
+///Override std::string's to let "" be an empty string
+template<> inline std::ostream& Parameter<std::string>::WriteTo(std::ostream& out, bool, int)
+{
+  if(_val == "")
+    return out<<"\"\"";
+  return out<<_val;
+}
 #endif
