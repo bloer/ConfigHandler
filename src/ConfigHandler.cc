@@ -25,14 +25,18 @@ int PrintProgramUsage(const char* dummy = "")
   return 0;
 }
 
+int NoOp(const char* dummy="") { return 0; }
+
 ConfigHandler::ConfigHandler() : 
   ParameterList("ConfigHandler","Global container for all parameters"), 
-  _program_usage(""), _program_description,
+  _program_usage(""), _program_description(""),
   _notes(), _default_cfg_file(), _saved_cfg()
 {
   AddCommandSwitch(' ',"cfg","Load global configuration data from <file>",
 		   CommandSwitch::LoadConfigFile(this),
 		   "file");
+  AddCommandSwitch(' ',"no-cfg","Prevent loading of any default config file",
+		   NoOp);
   AddCommandSwitch(' ',"saved-config",
 		   "Load saved configuration from previous run from <file>",
 		   CommandSwitch::DefaultRead<std::string>(_saved_cfg),
@@ -76,7 +80,7 @@ void ConfigHandler::PrintSwitches(bool quit)
   if(_program_usage != "")
     std::cout<<"Usage: "<<_program_usage<<std::endl;
   if(_program_description != "") 
-    std::cout<<"Description: "<<_program_desription<<std::endl;
+    std::cout<<"Description: "<<_program_description<<std::endl;
   
   size_t maxlong = 0;
   size_t maxpar = 0;
@@ -145,15 +149,24 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
   int status = 0;
   try{
     //first, see if the --cfg switch was specified; if not, load the default
+    //certain arguments don't want a default config
     bool cfgswitchfound = false;
+    bool skipcfgswitchfound = false;
+    std::set<std::string> skipcfgargs;
+    skipcfgargs.insert("--no-cfg");
+    skipcfgargs.insert("-h");
+    skipcfgargs.insert("--help");
+    
     for(int arg = 1; arg<argc; arg++){
       if(std::string(argv[arg]) == "--cfg"){
 	cfgswitchfound = true;
 	break;
       }
+      if(skipcfgargs.find(argv[arg]) != skipcfgargs.end())
+	skipcfgswitchfound = true;
     }
     if(!cfgswitchfound){
-      if(_default_cfg_file != ""){
+      if(_default_cfg_file != "" && !skipcfgswitchfound){
 	Message(INFO)<<"No --cfg switch found; reading default file "
 		     <<_default_cfg_file<<"...\n";
 	if(!ReadFromFile(_default_cfg_file.c_str())){
