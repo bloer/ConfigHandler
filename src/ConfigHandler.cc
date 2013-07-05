@@ -188,7 +188,7 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
     }
     if(!cfgswitchfound){
       if(_default_cfg_file != "" && !skipcfgswitchfound){
-	Message(INFO)<<"No --cfg switch found; reading default file "
+	Message(INFO)<<"No --cfg switch found; reading default cfg file "
 		     <<_default_cfg_file<<"...\n";
 	if(!ReadFromFile(_default_cfg_file.c_str())){
 	  return status=1;
