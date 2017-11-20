@@ -6,8 +6,11 @@
 #include "Parameter.hh"
 #include <sstream>
 #include "Message.hh"
+#include "ConfigHandler.hh"
 #include <stdexcept>
 #include <iomanip>
+
+bool ParameterList::_collapse_disabled = false;
 
 ParameterList::~ParameterList()
 {
@@ -18,6 +21,7 @@ ParameterList::ParameterList(const ParameterList& right) :
   VParameterNode(right._default_key, right._helptext)
 {
   _node_type = PARAMETER_LIST;
+  CopyPlistRelative(right);
 }
 
 ParameterList& ParameterList::operator=(const ParameterList& right)
@@ -27,8 +31,40 @@ ParameterList& ParameterList::operator=(const ParameterList& right)
   return *this;
 }
 
-VParameterNode* const ParameterList::GetParameter(const std::string& key){
+void ParameterList::CopyPlistRelative(const ParameterList& right)
+{
+  ParMap::const_iterator it;
+  for(it = right._parameters.begin(); it != right._parameters.end(); ++it){
+    VParameterNode* newnode = it->second->Clone(&right, this);
+    switch(newnode->GetNodeType()){
+    case FUNCTION:
+    case PARAMETER:{
+      boost::shared_ptr<VParameterNode> ptr(newnode);
+      _deleter.push_back(ptr);
+      _parameters.insert(std::make_pair(it->first,newnode));
+      break;
+    }
+    case PARAMETER_LIST:
+      _parameters.insert(std::make_pair(it->first, newnode));
+      break;
+    default:
+      break;
+    }
+  
+  }//end loop over map iterator
+}
+
+VParameterNode* ParameterList::GetParameter(const std::string& key){
   ParMap::iterator it = _parameters.find(key);
+  if(it != _parameters.end()) 
+    return it->second;
+  else 
+    return 0;
+}
+
+
+const VParameterNode* ParameterList::GetParameter(const std::string& key) const{
+  ParMap::const_iterator it = _parameters.find(key);
   if(it != _parameters.end()) 
     return it->second;
   else 
@@ -44,7 +80,7 @@ std::istream& ParameterList::ReadFrom(std::istream& in, bool single)
   while ( in.get(next) ){
     //if it's ')', or '}' exit
     if( next == ')' || next == '}' )
-      return in;
+      break;
     //if it's space, \t, \n, or comma, or opening parneth. ignore it and move on
     if( next == ' ' || next == ',' || next == '\t' || next == '\n' 
 	|| next == '(' || next == '{' || next == '|' || next == ';')
@@ -62,8 +98,11 @@ std::istream& ParameterList::ReadFrom(std::istream& in, bool single)
       if(func == "include"){
 	std::string fname;
 	in>>fname;
-	Message(DEBUG)<<"including file "<<fname<<std::endl;
-	ReadFromFile(fname.c_str());
+	std::string filepath = ConfigHandler::GetInstance()->FindConfigFile(fname);
+	if(filepath == "")
+	  throw std::invalid_argument(fname);
+	Message(DEBUG)<<"including file "<<filepath<<std::endl;
+	ReadFromFile(filepath.c_str());
 	continue;
       }
       else if (func == "copy"){
@@ -90,13 +129,13 @@ std::istream& ParameterList::ReadFrom(std::istream& in, bool single)
     //anything else should be the start of a key 
     //so put it back and read in the key
     in.unget();
+
     std::string bigkey;
     if( !(in>>bigkey) ){
       //somethings messed up.  Throw an exception and die
       throw std::invalid_argument("Unabled to read parameter list");
       return in;
     }
-    
     //bigkey may actually be a list of keys like key1,key2,key3
     std::vector<std::string> keylist;
     size_t searchstart=0;
@@ -112,7 +151,9 @@ std::istream& ParameterList::ReadFrom(std::istream& in, bool single)
     //read all the keys listed
     std::streampos start = in.tellg();
     for(size_t ikey = 0; ikey<keylist.size(); ++ikey){
-      in.seekg(start);
+      if(ikey>0)
+	in.seekg(start);
+
       std::string key = keylist[ikey];
       //see if the key has '.' in it
       bool sendsingle = false;
@@ -174,29 +215,44 @@ std::istream& ParameterList::ReadFrom(std::istream& in, bool single)
 }
 
 std::ostream& ParameterList::WriteTo( std::ostream& out, bool showhelp,
-				      int indent)
+				      int indent) const
 {
-  if(_parameters.empty())
-    InitializeParameterList();
+  //if(_parameters.empty())
+  //InitializeParameterList();
   std::stringstream dummy;
   dummy<<'\n';
   for(int i=0; i < indent; i++)
     dummy<<"  ";
   const std::string newline = dummy.str();
 
-  //print an opening parenthesis to mark the beginning
-  out<<"( "<<newline;
-  ParMap::iterator mapit;
-  mapit = _parameters.begin();
-  //Loop over all the parameters in the map and pass the stream to them
-  while( !out.fail() && mapit != _parameters.end() ){
-    int node_type = mapit->second->GetNodeType();
-    if(showhelp) out<<newline<<"# "<<mapit->second->GetHelpText()<<newline;
-    if(node_type != FUNCTION)
+  const Parameter<bool>* en = 
+    dynamic_cast<const Parameter<bool>* >(GetParameter("enabled"));
+  bool enabled = en ? en->GetValue() : true;
+  
+  if(_collapse_disabled && !enabled){
+    //only mark as disabled
+    out<<"( enabled "<<*en<<" ";
+  }
+  else{
+    //print an opening parenthesis to mark the beginning
+    out<<"( "<<newline;
+    ParMap::const_iterator mapit;
+    mapit = _parameters.begin();
+    //Loop over all the parameters in the map and pass the stream to them
+    while( !out.fail() && mapit != _parameters.end() ){
+      if(mapit->second->haswrite){
+	int node_type = mapit->second->GetNodeType();
+	if(showhelp) out<<newline<<"# "<<mapit->second->GetHelpText()<<newline;
+	if(node_type == FUNCTION)
+	  out<<"#";
 	out<<(mapit->first)<<" ";
-    mapit->second->WriteTo(out, showhelp, indent+1);
-    out<<newline;
-    ++mapit;
+	if(node_type == FUNCTION)
+	  out<<newline;
+	mapit->second->WriteTo(out, showhelp, indent+1);
+	out<<newline;
+      }
+      ++mapit;
+    }
   }
   out<<(showhelp ? newline : "")<<")" << (showhelp ? " #end list" : "");
   out.flush();

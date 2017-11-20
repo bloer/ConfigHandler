@@ -11,6 +11,9 @@
 
 #include <sys/ioctl.h>
 #include <stdio.h>
+#include <limits.h>
+#include <unistd.h>
+#include <fstream>
 
 class ParamHelpPrinter{
   const VParameterNode* p;
@@ -62,8 +65,25 @@ ConfigHandler::ConfigHandler() :
 		   PrintAnnotatedConfig );
   
   RegisterParameter("notes",_notes, "Generic notes about this run, etc");
+  RegisterParameter("collapse_disabled_lists",_collapse_disabled,
+		    "Do not print child info for disabled ParameterLists");
   //RegisterParameter("saved-config",_saved_cfg,
   //"Previously saved configuration file");
+  
+  //fill the paths to look for config files
+  _cfg_paths.clear();
+  //first is the environement variable CONFIGHANDLER_SEARCHDIR if defined
+  if( getenv("CONFIGHANDLER_SEARCHDIR") )
+    _cfg_paths.push_back( getenv("CONFIGHANDLER_SEARCHDIR") );
+  //then relative to the location of the current executable 
+  char result[ PATH_MAX ];
+  ssize_t count = readlink( "/proc/self/exe", result, PATH_MAX );
+  if(count > 0){
+    std::string dirpart = std::string(result,count);
+    if(dirpart.find_last_of('/') != std::string::npos)
+      dirpart.erase(dirpart.find_last_of('/'));
+    _cfg_paths.push_back( dirpart+"/../cfg");
+  }  
 }
 
 ConfigHandler::~ConfigHandler()
@@ -72,6 +92,30 @@ ConfigHandler::~ConfigHandler()
   for(SwitchSet::iterator it = _switches.begin(); it != _switches.end(); it++){
     delete (*it);
   }
+}
+
+bool testfile(const std::string& filepath){
+  Message(DEBUG)<<"Searching for file "<<filepath<<" under path...\n";
+  std::ifstream test(filepath.c_str());
+  return test.is_open();
+}
+
+std::string ConfigHandler::FindConfigFile(const std::string& fname)
+{
+  //first look in PWD or absolute path
+  if(testfile(fname))
+    return fname;
+
+  //look for the file in each of the defined locations
+  for(size_t i=0; i<_cfg_paths.size(); ++i){
+    std::string filepath = _cfg_paths[i]+"/"+fname;
+    if(testfile(filepath))
+      return filepath;
+  }
+  
+  //if we get here, we couldn'f find it
+  Message(ERROR)<<"Unable to find config file "<<fname<<" under search paths\n";
+  return "";
 }
 
 int ConfigHandler::RemoveCommandSwitch(char shortname, 
@@ -190,9 +234,7 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
       if(_default_cfg_file != "" && !skipcfgswitchfound){
 	Message(INFO)<<"No --cfg switch found; reading default cfg file "
 		     <<_default_cfg_file<<"...\n";
-	if(!ReadFromFile(_default_cfg_file.c_str())){
-	  return status=1;
-	};
+	status = CommandSwitch::LoadConfigFile(this)(_default_cfg_file.c_str());
       }
       else{
 	Message(DEBUG)<<"No --cfg switch found and no default file specified; "
@@ -202,9 +244,8 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
     
     for(int arg = 1; arg<argc; arg++){
       if(status != 0){
-	Message(ERROR)<<"Problem encountered while processing command line "
-		      <<std::endl;
-	return status;
+	break;
+
       }
       if( argv[arg][0] != '-' ){
 	//we're done with switches
@@ -301,12 +342,15 @@ int ConfigHandler::ProcessCommandLine(int& argc, char** argv)
 		      <<e.what()<<std::endl;
     PrintSwitches(true);
   }
-  if(status == 0 ) 
-    argc = _cmd_args.size() + 1;
-  else if(status < 0) return status;
+
+  if(status){
+    Message(ERROR)<<"Problem encountered while processing command line\n";
+    return status;
+  }
   
+  argc = _cmd_args.size() + 1;
   MessageHandler::GetInstance()->UpdateThreshold();
-  return _cmd_args.size();
+  return 0;
 }
 
 bool ConfigHandler::OrderCommandSwitchPointers::operator()
@@ -332,3 +376,4 @@ bool ConfigHandler::OrderCommandSwitchPointers::operator()
   //we shouldn't ever get here
   return false;
 }
+

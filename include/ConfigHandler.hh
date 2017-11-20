@@ -80,7 +80,7 @@ public:
   std::string GetProgramDescription(){ return _program_description; }
   
   ///Process the command line for the registered switches.
-  ///Returns the number of non-switch arguments remaining, neg value if error
+  ///Returns 0 in case of success
   int ProcessCommandLine(int& argc, char** argv);
   
   ///Get the number of non-switch arguments to the command line.
@@ -111,13 +111,23 @@ public:
   /// Get the default config file
   const std::string& GetDefaultCfgFile(){ return _default_cfg_file; }
   
+  //search multiple paths for a config file
+  std::string FindConfigFile(const std::string& fname);
+
+  ///Should we hide all children of disabled lists when printing? 
+  void CollapseDisabledLists(bool collapse) { _collapse_disabled = collapse; }
+  
+  
 private:
   std::string _program_usage;      ///< String detailing how to use program
   std::string _program_description; ///< String describing the program
 
-  phrase _notes;                      ///< specify comments in a config file
+  std::string _notes;                ///< specify comments in a config file
   std::string _default_cfg_file;    ///< default config file for this program
   std::string _saved_cfg;             ///< name of old config file
+
+  std::vector<std::string> _cfg_paths; ///<list of paths to search for cfg files
+  
   /// Default constructor is private; singleton implementation
   ConfigHandler(); 
   /// Destructor also private
@@ -126,6 +136,7 @@ private:
   /// Copy constructor private
   ConfigHandler(const ConfigHandler& right) : ParameterList(),
 					      _switches(right._switches) {}
+  
   /// Copy constructor private
   ConfigHandler& operator=(const ConfigHandler& right)
   { _switches = right._switches; return *this; }
@@ -158,15 +169,15 @@ private:
       
       Holds the user-defined function to call when the switch is read
   */
-  template<class Action> class CommandSwitch : public VCommandSwitch{
+  template<class Action> class TCommandSwitch : public VCommandSwitch{
     Action do_action;
   public:
-    CommandSwitch(char short_name, const std::string& long_name,
+    TCommandSwitch(char short_name, const std::string& long_name,
 		  const std::string& help_text, const std::string& par,
 		  Action action) : 
       VCommandSwitch(short_name, long_name, help_text, par), 
       do_action(action) {}
-    virtual ~CommandSwitch() {}
+    virtual ~TCommandSwitch() {}
     virtual int Process(const char* arg);
   };
   
@@ -205,14 +216,14 @@ int ConfigHandler::AddCommandSwitch(char shortname,
       return -3;
     }
   }
-  _switches.insert(new CommandSwitch<Action>(shortname, longname, helptext,
+  _switches.insert(new TCommandSwitch<Action>(shortname, longname, helptext,
 					     parameter, action) );
   return 0;
 }
 
 
 template<class Action> inline
-int ConfigHandler::CommandSwitch<Action>::Process(const char* arg)
+int ConfigHandler::TCommandSwitch<Action>::Process(const char* arg)
 {
   return do_action(arg);
 }
